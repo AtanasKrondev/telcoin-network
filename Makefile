@@ -197,3 +197,60 @@ clean-logs:
 		exit 1; \
 	fi
 	sed -i '' -E "s/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z //g; s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g" $(LOG_FILE)
+
+# initialize local testnet with dev funds from .env file
+init:
+	@if [ ! -f .env ]; then \
+		echo "Error: .env file not found. Please create .env with PUBLIC_KEY=your_address"; \
+		exit 1; \
+	fi
+	@PUBLIC_KEY=$$(grep '^PUBLIC_KEY=' .env | cut -d'=' -f2); \
+	if [ -z "$$PUBLIC_KEY" ]; then \
+		echo "Error: PUBLIC_KEY not found in .env file"; \
+		exit 1; \
+	fi; \
+	echo "Initializing testnet with dev-funds: $$PUBLIC_KEY"; \
+	./etc/local-testnet.sh --dev-funds $$PUBLIC_KEY
+
+# start local testnet (assumes already initialized)
+start:
+	./etc/local-testnet.sh --start
+
+# kill all running telcoin-network processes
+stop:
+	killall telcoin-network
+
+# stop specific validator or all validators
+# usage: make stop-validator 1 (stop validator 1) or make stop-validator (stop all)
+stop-validator:
+	@VALIDATOR=$$(echo "$(MAKECMDGOALS)" | awk '{print $$2}'); \
+	if [ -n "$$VALIDATOR" ]; then \
+		echo "Stopping validator $$VALIDATOR..."; \
+		pkill -f "telcoin-network.*--instance $$VALIDATOR"; \
+	else \
+		echo "Stopping all validators..."; \
+		killall telcoin-network; \
+	fi
+
+# follow validator logs and show consensus messages
+logs:
+	tail -f ./local-validators/validator-*.log | grep "got new consensus"
+
+# send 1 ether to self (for testing transactions)
+# requires PUBLIC_KEY and PRIVATE_KEY in .env file
+send:
+	@if [ ! -f .env ]; then \
+		echo "Error: .env file not found. Please create .env with PUBLIC_KEY=your_address and PRIVATE_KEY=your_private_key"; \
+		exit 1; \
+	fi
+	@PUBLIC_KEY=$$(grep '^PUBLIC_KEY=' .env | cut -d'=' -f2); \
+	PRIVATE_KEY=$$(grep '^PRIVATE_KEY=' .env | cut -d'=' -f2); \
+	if [ -z "$$PUBLIC_KEY" ]; then \
+		echo "Error: PUBLIC_KEY not found in .env file"; \
+		exit 1; \
+	fi; \
+	if [ -z "$$PRIVATE_KEY" ]; then \
+		echo "Error: PRIVATE_KEY not found in .env file"; \
+		exit 1; \
+	fi; \
+	cast send $$PUBLIC_KEY --value 1ether --from $$PUBLIC_KEY --private-key $$PRIVATE_KEY

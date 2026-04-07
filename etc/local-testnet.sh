@@ -46,12 +46,14 @@ if [ "$GOVERNANCE" == "" ] && [ "$DEV_FUNDS" != "" ]; then
     GOVERNANCE="$DEV_FUNDS"
 fi
 
-VALIDATORS=("validator-1" "validator-2" "validator-3" "validator-4")
+VALIDATORS=("validator-1" "validator-2" "validator-3" "validator-4" "validator-5" "validator-6")
 ADDRESSES=(
     "0x1111111111111111111111111111111111111111"
     "0x2222222222222222222222222222222222222222"
     "0x3333333333333333333333333333333333333333"
     "0x4444444444444444444444444444444444444444"
+    "0x5555555555555555555555555555555555555555"
+    "0x6666666666666666666666666666666666666666"
 )
 
 # variables for pulling
@@ -178,11 +180,11 @@ if [ "$START" = true ]; then
     done
 
     DATADIR="${ROOTDIR}/observer"
-    CONSENSUS_METRICS="127.0.0.1:9104"
-    echo "Starting Observer in background, rpc endpoint http://localhost:8541"
+    CONSENSUS_METRICS="127.0.0.1:9106"
+    echo "Starting Observer in background, rpc endpoint http://localhost:8539"
     target/${RELEASE}/telcoin-network node --datadir "${DATADIR}" \
        --observer \
-       --instance 5 \
+       --instance 7 \
        --metrics "${CONSENSUS_METRICS}" \
        --log.stdout.format log-fmt \
        -vvv \

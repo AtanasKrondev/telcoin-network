@@ -20,10 +20,12 @@ RPCs can be reached at:
 - validator 2: 127.0.0.1:8544
 - validator 3: 127.0.0.1:8543
 - validator 4: 127.0.0.1:8542
+- validator 5: 127.0.0.1:8541
+- validator 6: 127.0.0.1:8540
 
 ## Local Testnet Script
 
-`local-testnet.sh` creates a 4-validator local network with an observer node. It generates keys inside `local-validators/` so the dev can start nodes in separate terminal windows.
+`local-testnet.sh` creates a 6-validator local network with an observer node. It generates keys inside `local-validators/` so the dev can start nodes in separate terminal windows.
 
 ### Flags
 
@@ -60,7 +62,9 @@ With a separate governance address:
 | validator-2 | http://127.0.0.1:8544 |
 | validator-3 | http://127.0.0.1:8543 |
 | validator-4 | http://127.0.0.1:8542 |
-| observer | http://127.0.0.1:8541 |
+| validator-5 | http://127.0.0.1:8541 |
+| validator-6 | http://127.0.0.1:8540 |
+| observer | http://127.0.0.1:8539 |
 
 ### Shutdown
 
