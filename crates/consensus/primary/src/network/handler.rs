@@ -313,6 +313,55 @@ where
                 // Fire-and-forget: no oneshot, no blocking
                 let _ = self.consensus_bus.new_epoch_votes().send(*vote).await;
             }
+
+            // === MOCK: Option 2 - Gossip-Based Vote Collection ===
+            //
+            // These arms handle the two new gossip variants that replace the direct
+            // `request_response` RPC used for vote collection. See `PrimaryGossip` in
+            // `message.rs` for the full design rationale.
+
+            PrimaryGossip::VoteRequest(header) => {
+                // A peer is requesting votes for their proposed header via gossip.
+                // In the real implementation this node would:
+                //   1. Validate the topic matches "tn-vote-request".
+                //   2. Call `self.handler.vote(peer, *header, vec![])` (same logic as RPC handler).
+                //   3. On success, publish the vote via `network_handle.publish_vote(vote)`.
+                //   4. On missing parents, fetch and retry (same as the RPC missing-parents flow).
+                //
+                // The key difference: the response is published back onto gossip ("tn-vote")
+                // instead of being returned as a `PrimaryResponse` over the RPC channel.
+                // This means V3 and V4 can vote for V1's header even without a direct connection,
+                // because they received the VoteRequest transitively through V2 and V3.
+                ensure!(
+                    topic.to_string().eq(&tn_config::LibP2pConfig::primary_vote_request_topic()),
+                    PrimaryNetworkError::InvalidTopic
+                );
+                // TODO: validate header, sign vote, publish via gossip
+                // let vote = self.vote(propagation_source, *header, vec![]).await?;
+                // network_handle.publish_vote(vote).await?;
+                let _ = header; // suppress unused warning in mock
+            }
+
+            PrimaryGossip::VoteGossip(vote) => {
+                // A peer has published their vote on the gossip topic.
+                // In the real implementation this node would:
+                //   1. Validate the topic matches "tn-vote".
+                //   2. Verify the vote's BLS signature and epoch/round fields.
+                //   3. Forward the vote to the Certifier via a `ConsensusBus` channel
+                //      (e.g. `consensus_bus.gossip_votes().send(*vote)`).
+                //   4. The Certifier's `propose_header_via_gossip()` loop receives the vote
+                //      and feeds it into `VotesAggregator::append()` until quorum is reached.
+                //
+                // The VotesAggregator already deduplicates votes from the same authority,
+                // so re-delivery by gossipsub is safe.
+                ensure!(
+                    topic.to_string().eq(&tn_config::LibP2pConfig::primary_vote_topic()),
+                    PrimaryNetworkError::InvalidTopic
+                );
+                // TODO: verify vote signature and forward to certifier channel
+                // self.consensus_bus.gossip_votes().send(*vote).await?;
+                let _ = vote; // suppress unused warning in mock
+            }
         }
 
         Ok(())

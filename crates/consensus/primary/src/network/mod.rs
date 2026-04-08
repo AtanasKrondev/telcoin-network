@@ -103,6 +103,56 @@ impl PrimaryNetworkHandle {
         Ok(())
     }
 
+    // === MOCK: Option 2 - Gossip-Based Vote Collection ===
+    //
+    // The two methods below replace the `request_vote` RPC (one call per peer) with a
+    // single gossip publish. This removes the requirement for a direct connection between
+    // the proposer and every committee member.
+    //
+    // Current flow in `Certifier::propose_header` (requires full mesh):
+    //
+    //   for (name, peer_id) in committee.others_primaries_by_id(...) {
+    //       self.network.request_vote(peer_id, header.clone(), parents)  // direct RPC
+    //   }
+    //
+    // Replacement flow (works on any connected topology, including linear chain):
+    //
+    //   self.network.publish_vote_request(header.clone()).await?;  // one gossip publish
+    //   // ... Certifier listens on consensus_bus.gossip_votes() channel for incoming votes
+
+    /// Broadcast a vote request to all reachable peers via gossipsub.
+    ///
+    /// MOCK: Replaces the per-peer `request_vote()` RPC loop in
+    /// `Certifier::propose_header()`. Gossipsub delivers the header transitively
+    /// through intermediate validators so all committee members receive it
+    /// regardless of direct connectivity.
+    ///
+    /// Example: with linear chain V1--V2--V3--V4, V1 cannot dial V3 or V4 directly.
+    /// Publishing on "tn-vote-request" causes gossipsub to relay V1→V2→V3→V4,
+    /// so all four validators can validate and vote on V1's header.
+    #[allow(dead_code)]
+    pub async fn publish_vote_request(&self, header: Header) -> NetworkResult<()> {
+        let data = encode(&PrimaryGossip::VoteRequest(Box::new(header)));
+        self.handle.publish(tn_config::LibP2pConfig::primary_vote_request_topic(), data).await?;
+        Ok(())
+    }
+
+    /// Broadcast a vote on a received header to all peers via gossipsub.
+    ///
+    /// MOCK: Replaces returning `PrimaryResponse::Vote` over the RPC channel.
+    /// The voting peer publishes their vote on "tn-vote"; gossipsub delivers it
+    /// back to the proposer (and all other subscribers) transitively.
+    ///
+    /// The proposer's `Certifier::propose_header_via_gossip()` loop receives votes
+    /// via `consensus_bus.gossip_votes()` and feeds them into `VotesAggregator`
+    /// until `2f+1` votes are collected and a certificate can be formed.
+    #[allow(dead_code)]
+    pub async fn publish_vote(&self, vote: Vote) -> NetworkResult<()> {
+        let data = encode(&PrimaryGossip::VoteGossip(Box::new(vote)));
+        self.handle.publish(tn_config::LibP2pConfig::primary_vote_topic(), data).await?;
+        Ok(())
+    }
+
     /// Request a vote for header from the peer.
     /// Can return a response of Vote or MissingParents, other responses will be an error.
     pub async fn request_vote(

@@ -61,6 +61,36 @@ mod network_tests;
 /// on sub-behaviors in declaration order, short-circuiting on `Err(ConnectionDenied)`.
 /// `peer_manager` must be first so banned-peer denials fire before other behaviors
 /// (e.g. `req_res`) register the connection in their internal state.
+///
+/// # MOCK: Option 3 - libp2p Circuit Relay
+///
+/// The third fix option adds a relay behavior to this struct without changing any
+/// consensus or certifier logic. A "circuit relay" lets two peers that cannot
+/// reach each other directly establish a virtual connection through an intermediate
+/// relay node.
+///
+/// In the linear-chain topology (V1--V2--V3--V4):
+///   - V2 and V3 are configured as **relay servers** (`libp2p::relay::Behaviour`).
+///   - V1 and V4 are configured as **relay clients** (`libp2p::relay::client::Behaviour`).
+///   - V1 dials V4 using a relay multiaddr through V2 and V3:
+///       `/ip4/10.10.2.22/udp/49590/quic-v1/p2p/<V2-PeerId>/p2p-circuit/p2p/<V4-PeerId>`
+///   - Once the circuit is established, the existing `req_res` (RequestResponse) vote
+///     protocol works UNCHANGED — the relay is transparent to upper layers.
+///
+/// What would change to enable this:
+///   1. Add `relay_server: libp2p::relay::Behaviour` and
+///      `relay_client: libp2p::relay::client::Behaviour` fields below (commented out).
+///   2. In `TNBehavior::new`, construct both behaviors from the swarm's keypair.
+///   3. In `ConsensusNetwork::new`, extend `SwarmBuilder` with `.with_relay_client(...)`.
+///   4. In `LibP2pConfig`, add relay server/client flags and the relay multiaddrs.
+///   5. After dialling a relay server, listen on the circuit address so remote peers
+///      can establish inbound circuits:
+///          `swarm.listen_on("/p2p/<RelayPeerId>/p2p-circuit".parse()?)`
+///   6. No changes needed in `certifier.rs`, `handler.rs`, or `message.rs` —
+///      the vote RPC already works once connectivity is established.
+///
+/// Dependencies to add to `Cargo.toml` for `tn-network-libp2p`:
+///   `libp2p = { features = ["relay"] }`
 #[derive(NetworkBehaviour)]
 pub(crate) struct TNBehavior<C, DB>
 where
@@ -77,6 +107,15 @@ where
     pub(crate) kademlia: kad::Behaviour<KadStore<DB>>,
     /// Stream-based sync behavior for bulk data transfer.
     pub(crate) stream: StreamBehavior,
+
+    // === MOCK: Option 3 - libp2p Circuit Relay fields ===
+    //
+    // Uncomment these two fields (and wire them in `new` + `SwarmBuilder`) to enable
+    // relay support. Intermediate validators (V2, V3) act as servers; edge validators
+    // (V1, V4) act as clients and establish circuits through them.
+    //
+    // pub(crate) relay_server: libp2p::relay::Behaviour,
+    // pub(crate) relay_client: libp2p::relay::client::Behaviour,
 }
 
 impl<C, DB> TNBehavior<C, DB>

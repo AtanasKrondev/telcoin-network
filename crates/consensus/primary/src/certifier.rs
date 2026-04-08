@@ -240,6 +240,91 @@ impl<DB: Database> Certifier<DB> {
         Ok(vote)
     }
 
+    // === MOCK: Option 2 - Gossip-Based Vote Collection ===
+    //
+    // `propose_header` (below) collects votes via direct libp2p `request_response` RPC.
+    // This requires a DIRECT network connection from the proposer to every other validator.
+    //
+    // In the linear-chain topology (V1--V2--V3--V4):
+    //   - V1 can dial V2   ✓  → collects own vote + V2 vote = 2 total
+    //   - V1 cannot dial V3 ✗ → V3's vote is never received
+    //   - V1 cannot dial V4 ✗ → V4's vote is never received
+    //   - Quorum = 3, so V1 is permanently stuck and never produces a certificate.
+    //
+    // `propose_header_via_gossip` (this mock) fixes this by publishing one gossip message
+    // instead of N direct RPCs. Gossipsub delivers it transitively through V2 and V3,
+    // so V3 and V4 receive the request and can publish their votes back via gossip.
+    //
+    // To wire this up for real, three additional changes are needed:
+    //   1. `ConsensusBus`: add a `gossip_votes` broadcast channel.
+    //   2. `RequestHandler::process_gossip`: in the `VoteGossip` arm, forward the vote
+    //      to `consensus_bus.gossip_votes()` instead of dropping it (see handler.rs mock).
+    //   3. Replace all call-sites of `propose_header` with `propose_header_via_gossip`.
+
+    /// Propose a header using gossip-based vote collection (Option 2 mock).
+    ///
+    /// This is a drop-in replacement for [`propose_header`] that does not require
+    /// direct connections to all committee members. Instead of sending a
+    /// `PrimaryRequest::Vote` RPC to each peer, it publishes the header once on
+    /// the "tn-vote-request" gossipsub topic and collects `PrimaryGossip::VoteGossip`
+    /// messages that peers publish in response on the "tn-vote" topic.
+    #[allow(dead_code)]
+    async fn propose_header_via_gossip(&self, header: Header) -> DagResult<Certificate> {
+        // Only propose headers in current epoch (same guard as propose_header).
+        if header.epoch() != self.committee.epoch() {
+            return Err(DagError::InvalidEpoch {
+                expected: self.committee.epoch(),
+                received: header.epoch(),
+            });
+        }
+
+        // Reset the aggregator and add our own implicit vote (same as propose_header).
+        let mut votes_aggregator = VotesAggregator::new();
+        let own_vote = Vote::new(&header, self.authority_id.clone(), &self.signature_service);
+        // `mut` will be needed once the gossip vote loop (TODO below) is uncommented.
+        #[allow(unused_mut)]
+        let mut certificate = votes_aggregator.append(own_vote, &self.committee, &header)?;
+
+        // MOCK step 1: Flood-publish the header on the "tn-vote-request" topic.
+        // Gossipsub delivers this transitively to all reachable peers, including
+        // V3 and V4 that V1 cannot reach directly.
+        //
+        // TODO: uncomment when publish_vote_request is fully wired:
+        // self.network.publish_vote_request(header.clone()).await?;
+
+        // MOCK step 2: Subscribe to the "tn-vote" gossip topic via ConsensusBus.
+        // `RequestHandler::process_gossip` forwards incoming VoteGossip messages
+        // to this channel (see the VoteGossip arm in handler.rs).
+        //
+        // TODO: add `gossip_votes` channel to ConsensusBus and subscribe here:
+        // let mut rx_gossip_votes = self.consensus_bus.subscribe_gossip_votes();
+
+        // MOCK step 3: Aggregate votes as they arrive until quorum or cancellation.
+        //
+        // TODO: replace the todo!() with the real loop once channels exist:
+        // loop {
+        //     if certificate.is_some() { break; }
+        //     tokio::select! {
+        //         Some(vote) = rx_gossip_votes.recv() => {
+        //             // VotesAggregator already deduplicates votes from the same authority,
+        //             // so re-delivery by gossipsub is safe.
+        //             let author = vote.author.clone();
+        //             certificate = match votes_aggregator.append(vote, &self.committee, &header) {
+        //                 Ok(cert) => cert,
+        //                 Err(e) => {
+        //                     error!(target: "primary::certifier", ?author, ?e, "invalid gossip vote");
+        //                     None
+        //                 }
+        //             };
+        //         }
+        //         _ = &cancel_proposal => return Err(DagError::Canceled),
+        //         else => break,   // channel closed — no more votes arriving
+        //     }
+        // }
+
+        certificate.ok_or(DagError::CouldNotFormCertificate(header.digest()))
+    }
+
     /// Propose a header produced by this authority.
     #[instrument(level = "debug", skip_all, fields(round = header.round(), epoch = header.epoch()))]
     async fn propose_header(&self, header: Header) -> DagResult<Certificate> {

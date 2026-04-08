@@ -141,6 +141,38 @@ impl LibP2pConfig {
         String::from("tn-txn")
     }
 
+    // === MOCK: Option 2 - Gossip-Based Vote Collection ===
+    //
+    // These topics replace the direct RequestResponse RPC used for vote collection.
+    // Publishing on gossipsub means intermediate nodes (V2, V3 in the linear chain)
+    // automatically relay messages to peers they can reach but the proposer cannot.
+    //
+    // Flow:
+    //   Proposer  --[tn-vote-request gossip]--> all reachable peers (transitively)
+    //   Each peer --[tn-vote gossip]----------> proposer (transitively)
+    //
+    // The proposer subscribes to "tn-vote" and aggregates until quorum is reached.
+
+    /// Gossip topic for broadcasting a vote request (proposed header) to all peers.
+    ///
+    /// MOCK: Used by `PrimaryNetworkHandle::publish_vote_request` instead of
+    /// per-peer `request_response` RPC calls. Gossipsub delivers this transitively
+    /// through intermediate validators, making the linear-chain topology viable.
+    #[allow(dead_code)]
+    pub fn primary_vote_request_topic() -> String {
+        String::from("tn-vote-request")
+    }
+
+    /// Gossip topic for broadcasting a vote on a received header.
+    ///
+    /// MOCK: Used by `PrimaryNetworkHandle::publish_vote` instead of returning
+    /// a vote as a `PrimaryResponse` in the `request_response` channel.
+    /// The original proposer (and all other subscribers) receives votes here.
+    #[allow(dead_code)]
+    pub fn primary_vote_topic() -> String {
+        String::from("tn-vote")
+    }
+
     /// Protocol for identify behavior.
     pub fn identify_protocol(&self) -> &'static str {
         Self::protocol()

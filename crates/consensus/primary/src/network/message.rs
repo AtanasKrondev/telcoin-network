@@ -70,6 +70,49 @@ pub(super) enum PrimaryGossip {
     Consensus(Box<ConsensusResult>),
     /// Signed hash sent out by committee memebers at epoch start.
     EpochVote(Box<EpochVote>),
+
+    // === MOCK: Option 2 - Gossip-Based Vote Collection ===
+    //
+    // Root problem: `PrimaryRequest::Vote` is sent over libp2p `request_response`,
+    // which requires a DIRECT connection between proposer and voter.
+    // In the linear chain V1--V2--V3--V4, V1 cannot dial V3 or V4 directly,
+    // so V1 can only collect 2 votes (self + V2) — below the quorum of 3.
+    //
+    // Fix: replace RPC with flood-publish on two new gossipsub topics.
+    //
+    //   1. Proposer publishes VoteRequest on "tn-vote-request".
+    //      Gossipsub relays it transitively: V1→V2→V3→V4 (all receive it).
+    //
+    //   2. Each validator that can verify the header publishes a VoteGossip
+    //      on "tn-vote". Gossipsub relays votes back to the proposer.
+    //
+    //   3. Proposer's VotesAggregator collects votes from the gossip subscription
+    //      until quorum is reached, then forms and publishes the certificate.
+    //
+    // Trade-offs vs. direct RPC:
+    //   - Vote requests are visible to ALL validators (not only the proposer).
+    //   - Votes from non-committee members must be rejected by the aggregator.
+    //   - Duplicate votes (from gossip re-delivery) need deduplication.
+    //   - One extra gossip round-trip adds latency (acceptable for async DAG BFT).
+    //   - Security: a validator could see all votes before quorum is reached,
+    //     which is already the case after certificate gossip anyway.
+
+    /// A proposed header broadcast by the proposer seeking votes from all peers.
+    ///
+    /// MOCK: Published on `LibP2pConfig::primary_vote_request_topic()` ("tn-vote-request").
+    /// Handler in `RequestHandler::process_gossip` validates the header and replies
+    /// with a `VoteGossip` if valid.
+    #[allow(dead_code)]
+    VoteRequest(Box<Header>),
+
+    /// A vote on a previously announced header, broadcast by the voting peer.
+    ///
+    /// MOCK: Published on `LibP2pConfig::primary_vote_topic()` ("tn-vote").
+    /// The proposer collects these via a `ConsensusBus` channel (e.g. `rx_gossip_votes`)
+    /// fed by `RequestHandler::process_gossip`, replacing the `rx_votes` mpsc channel
+    /// that currently receives RPC-based votes in `Certifier::propose_header`.
+    #[allow(dead_code)]
+    VoteGossip(Box<Vote>),
 }
 
 // impl TNMessage trait for types
