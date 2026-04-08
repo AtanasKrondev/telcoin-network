@@ -11,10 +11,10 @@ cp -r /home/nonroot/data/validator-4/node-info.yaml /home/nonroot/data/genesis/v
     --datadir /home/nonroot/data/ \
     --chain-id 0x1e7 \
     --epoch-duration-in-secs 60 \
-    --dev-funded-account 0x3DCc9a6f3A71F0A6C8C659c65558321c374E917a \
+    --dev-funded-account 0x748Cab9A6993A24CA6208160130b3f7b79098c6d \
     --max-header-delay-ms 1000 \
     --min-header-delay-ms 1000 \
-    --consensus-registry-owner 0x3DCc9a6f3A71F0A6C8C659c65558321c374E917a
+    --consensus-registry-owner 0x748Cab9A6993A24CA6208160130b3f7b79098c6d
 
 # create directories and copy files for each validator
 for i in {1..4}; do
