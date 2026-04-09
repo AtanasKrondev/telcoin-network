@@ -71,6 +71,38 @@ services:
     volumes:
       - ./setup_validator.sh:/setup_validator.sh
       - validator4-data:/home/nonroot/data
+  setup5:
+    image: local-telcoin-network:latest
+    depends_on:
+      - telcoin-base
+    environment:
+      - PRIMARY_LISTENER_MULTIADDR=/ip4/10.10.0.25/udp/49590/quic-v1
+      - WORKER_LISTENER_MULTIADDR=/ip4/10.10.0.25/udp/49595/quic-v1
+      - EXECUTION_ADDRESS=0x5555555555555555555555555555555555555555
+      - TN_BLS_PASSPHRASE=local
+    user: "root"
+    command:
+      - "bash"
+      - "/setup_validator.sh"
+    volumes:
+      - ./setup_validator.sh:/setup_validator.sh
+      - validator5-data:/home/nonroot/data
+  setup6:
+    image: local-telcoin-network:latest
+    depends_on:
+      - telcoin-base
+    environment:
+      - PRIMARY_LISTENER_MULTIADDR=/ip4/10.10.0.26/udp/49590/quic-v1
+      - WORKER_LISTENER_MULTIADDR=/ip4/10.10.0.26/udp/49595/quic-v1
+      - EXECUTION_ADDRESS=0x6666666666666666666666666666666666666666
+      - TN_BLS_PASSPHRASE=local
+    user: "root"
+    command:
+      - "bash"
+      - "/setup_validator.sh"
+    volumes:
+      - ./setup_validator.sh:/setup_validator.sh
+      - validator6-data:/home/nonroot/data
 
   # create and distribute genesis files
   comittee:
@@ -88,6 +120,8 @@ services:
       - setup2
       - setup3
       - setup4
+      - setup5
+      - setup6
     volumes:
       - ./genesis.sh:/genesis.sh
       - sharedgenesisdir:/home/nonroot/data/genesis
@@ -95,6 +129,8 @@ services:
       - validator2-data:/home/nonroot/data/validator-2
       - validator3-data:/home/nonroot/data/validator-3
       - validator4-data:/home/nonroot/data/validator-4
+      - validator5-data:/home/nonroot/data/validator-5
+      - validator6-data:/home/nonroot/data/validator-6
 
   # start nodes
   validator1:
@@ -189,12 +225,60 @@ services:
     networks:
       validators:
         ipv4_address: 10.10.0.24
+  validator5:
+    container_name: validator5
+    image: local-telcoin-network:latest
+    depends_on:
+      - comittee
+    environment:
+      - RUST_LOG=info
+      - TN_BLS_PASSPHRASE=local # must match value used in setup5 service
+    user: "1101:1101"
+    command: >
+      /usr/local/bin/telcoin node
+      --datadir /home/nonroot/data
+      --http
+      --http.addr 0.0.0.0
+      --http.port 8545
+      --metrics 127.0.0.1:9101
+    ports:
+      - 8541:8545
+    volumes:
+      - validator5-data:/home/nonroot/data
+    networks:
+      validators:
+        ipv4_address: 10.10.0.25
+  validator6:
+    container_name: validator6
+    image: local-telcoin-network:latest
+    depends_on:
+      - comittee
+    environment:
+      - RUST_LOG=info
+      - TN_BLS_PASSPHRASE=local # must match value used in setup6 service
+    user: "1101:1101"
+    command: >
+      /usr/local/bin/telcoin node
+      --datadir /home/nonroot/data
+      --http
+      --http.addr 0.0.0.0
+      --http.port 8545
+      --metrics 127.0.0.1:9101
+    ports:
+      - 8540:8545
+    volumes:
+      - validator6-data:/home/nonroot/data
+    networks:
+      validators:
+        ipv4_address: 10.10.0.26
 
 volumes:
   validator1-data:
   validator2-data:
   validator3-data:
   validator4-data:
+  validator5-data:
+  validator6-data:
   sharedgenesisdir:
 
 networks:
